@@ -108,7 +108,7 @@ Governed Response → User
 ## Quick Start
 
 ```bash
-git clone https://github.com/SiddhiRohan/Arbiter.git
+git clone https://github.com/bkk8403/Arbiter.git
 cd arbiter/server
 pip install -r requirements.txt
 python -m uvicorn main:app --reload --port 8000
