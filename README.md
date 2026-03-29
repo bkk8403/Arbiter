@@ -337,5 +337,5 @@ MIT
 <p align="center">
   <strong>Made at HackPSU Spring 2026</strong>
   <br/>
-  <em>by Siddhi Rohan</em>
+  <em>by Krishna Kishore Buddi</em>
 </p>
