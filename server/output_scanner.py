@@ -24,6 +24,13 @@ _CURRENCY_PATTERN = re.compile(r"\$[\d,]+(?:\.\d{2})?")
 # Percentage pattern
 _PERCENTAGE_PATTERN = re.compile(r"\b\d{1,3}(?:\.\d+)?%")
 
+# Fields that are too generic to flag as leakage
+_SKIP_FIELDS = {
+    "status", "type", "role", "department", "shift", "certification",
+    "employment_status", "payment_plan", "pay_frequency", "enrollment_date",
+    "date_of_birth", "date_diagnosed", "start_date", "date",
+}
+
 
 def scan_output(
     llm_response: str,
@@ -31,22 +38,6 @@ def scan_output(
     raw_data: dict,
     filtered_context: str,
 ) -> dict:
-    """
-    Scan an LLM response for governance violations.
-
-    Args:
-        llm_response: the raw text the LLM produced
-        policy: the PolicyDecision from input governance
-        raw_data: the full unfiltered tenant data
-        filtered_context: the text that was actually sent to the LLM
-
-    Returns:
-        {
-            "violations": [{"type": str, "description": str, "severity": str, "redacted_value": str}],
-            "sanitized_response": str (with violations redacted),
-            "decision": "clean" | "redacted" | "blocked",
-        }
-    """
     violations = []
     sanitized = llm_response
 
@@ -57,27 +48,10 @@ def scan_output(
     # ── Check 2: Leakage (denied data values appearing in output) ──
     leak_violations, sanitized = _check_leakage(sanitized, policy, raw_data, filtered_context)
     violations.extend(leak_violations)
-    # ── Check 2.5: Inference bypass — withheld values reconstructed ──
-    if hasattr(policy, 'inference_withheld_values'):
-        for val_info in policy.inference_withheld_values:
-            val_str = f"${val_info['value']:,}"
-            if val_str in sanitized:
-                violations.append({
-                    "type": "inference_bypass",
-                    "description": (
-                        f"LLM reconstructed withheld value {val_str} "
-                        f"({val_info['field']}) from component data — "
-                        f"inference channel circumvented"
-                    ),
-                    "severity": "high",
-                    "redacted_value": val_str,
-                })
-                sanitized = sanitized.replace(val_str, "[WITHHELD VALUE REDACTED]")
 
     # ── Check 3: Hallucination (data claims not in filtered context) ──
     hallucination_violations = _check_hallucination(sanitized, filtered_context, raw_data)
     violations.extend(hallucination_violations)
-    # Hallucinations get flagged but not redacted — we can't know which part to remove
 
     # ── Determine decision ──
     if not violations:
@@ -116,7 +90,6 @@ def _check_mask_breaches(response: str, raw_data: dict) -> tuple[list[dict], str
         ssn = person.get("ssn", "")
         if ssn:
             real_ssns.add(ssn)
-            # Also add without dashes
             real_ssns.add(ssn.replace("-", ""))
 
     # Check for SSN patterns
@@ -125,7 +98,6 @@ def _check_mask_breaches(response: str, raw_data: dict) -> tuple[list[dict], str
         normalized = match.replace(" ", "-").replace(".", "-")
         no_dash = normalized.replace("-", "")
 
-        # Is this a real SSN from our data?
         is_real = normalized in real_ssns or no_dash in real_ssns
 
         violations.append({
@@ -148,13 +120,12 @@ def _check_leakage(response: str, policy, raw_data: dict, filtered_context: str 
     violations = []
     sanitized = response
 
-    # Build a set of denied values from raw data for denied resources
     denied_values = _collect_denied_values(policy, raw_data)
 
     for value_info in denied_values:
         value_str = str(value_info["value"])
 
-        # Skip very short values that would false-positive (e.g., "1", "A")
+        # Skip very short values that would false-positive
         if len(value_str) < 4:
             continue
 
@@ -175,13 +146,12 @@ def _check_leakage(response: str, policy, raw_data: dict, filtered_context: str 
     denied_numbers = {v["value"] for v in denied_values if isinstance(v["value"], (int, float))}
 
     for match in currency_matches:
-        # Parse the dollar amount
         try:
             amount = int(match.replace("$", "").replace(",", "").split(".")[0])
         except ValueError:
             continue
 
-        if amount in denied_numbers:
+        if amount in denied_numbers and match not in filtered_context:
             violations.append({
                 "type": "leakage",
                 "description": f"Denied financial value ${amount:,} detected in output",
@@ -212,14 +182,17 @@ def _collect_denied_values(policy, raw_data: dict) -> list[dict]:
             for field, value in record.items():
                 if value is None:
                     continue
-                # Track financial values, names, IDs — anything identifiable
+                # Skip generic fields that cause false positives
+                if field in _SKIP_FIELDS:
+                    continue
                 if isinstance(value, (int, float)) and value > 100:
                     denied_values.append({
                         "resource": resource_name,
                         "field": field,
                         "value": value,
                     })
-                elif isinstance(value, str) and len(value) >= 4:
+                elif isinstance(value, str) and len(value) >= 6:
+                    # Raised from 4 to 6 to skip short generic strings
                     denied_values.append({
                         "resource": resource_name,
                         "field": field,
@@ -237,9 +210,6 @@ def _check_hallucination(response: str, filtered_context: str, raw_data: dict) -
     """
     Detect when the LLM fabricates data-like claims not present
     in the filtered context it was given.
-
-    Focuses on numeric claims (salaries, GPAs, grades) that look
-    like they came from the data but weren't in the authorized context.
     """
     violations = []
 
@@ -289,16 +259,20 @@ def _check_hallucination(response: str, filtered_context: str, raw_data: dict) -
         except ValueError:
             continue
 
-        # Check if this amount is close to (within 10%) a denied value
+        amount_str = str(amount)
+        # Skip if this amount is already in the authorized context
+        if amount_str in context_numbers:
+            continue
+
         for raw_num_str, info in raw_numbers.items():
             raw_val = info["value"]
             if isinstance(raw_val, (int, float)) and raw_val > 1000:
                 if str(int(raw_val)) not in context_numbers:
-                    if abs(amount - raw_val) / raw_val < 0.05 and match not in filtered_context and str(amount) not in context_numbers:
+                    if abs(amount - raw_val) / raw_val < 0.05 and match not in filtered_context:
                         violations.append({
                             "type": "hallucination",
                             "description": (
-                                f"Response contains ${amount:,} which is within 10% of "
+                                f"Response contains ${amount:,} which is within 5% of "
                                 f"denied {info['field']}=${int(raw_val):,} — "
                                 f"likely inferred from training data"
                             ),

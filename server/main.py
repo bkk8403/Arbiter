@@ -152,12 +152,17 @@ def call_llm(user_message: str, filtered_context: str, role: str) -> str:
         client = anthropic.Anthropic(api_key=key)
 
         system_prompt = (
-            f"You are Arbiter AI, an ICCP-governed assistant. "
-            f"Current user role: {role}. "
-            f"ONLY use the data below. Do NOT make up information. "
-            f"If data shows [ACCESS DENIED] or is masked (***), tell the user "
-            f"their role cannot access it. Be helpful and concise.\n\n"
-            f"--- ICCP-FILTERED DATA ---\n{filtered_context}\n--- END ---"
+            f"You are a university data assistant. The user's role is: {role}.\n\n"
+            f"RULES:\n"
+            f"1. Answer ONLY from the data below. Every value in this data has been pre-approved for this user's role.\n"
+            f"2. If data is present, share it directly. Do not hedge, refuse, or add disclaimers — it is already filtered.\n"
+            f"3. If a field shows [ACCESS DENIED], say the user's role does not have access to that resource.\n"
+            f"4. If a field shows *** or [MASKED], say that field is restricted by institution policy.\n"
+            f"5. NEVER invent, estimate, calculate, or infer values not explicitly present below.\n"
+            f"6. NEVER compute totals, averages, or derived values from the fields provided.\n"
+            f"7. If the user asks for data not present below, say it is not available for their role.\n"
+            f"8. Be concise and direct. No preamble.\n\n"
+            f"--- DATA FOR THIS REQUEST ---\n{filtered_context}\n--- END ---"
         )
 
         response = client.messages.create(
@@ -287,19 +292,35 @@ class UngovernedResponse(BaseModel):
 
 @app.post("/chat/ungoverned", response_model=UngovernedResponse)
 async def chat_ungoverned(request: UngovernedRequest):
+    """Show what the LLM would see without governance — raw unfiltered data."""
     try:
-        import json
+        from data_filter import to_text
         tenant_data = engine._load_tenant_data()
-        raw_context = json.dumps(tenant_data, indent=2, default=str)
+
+        # Build unfiltered context — everything visible
+        raw_sections = []
+        metadata_keys = {"tenant_id", "data_source", "last_updated"}
+        for resource_name, records in tenant_data.items():
+            if resource_name in metadata_keys:
+                continue
+            section = [f"\n=== {resource_name.upper().replace('_', ' ')} ==="]
+            if isinstance(records, list):
+                for record in records:
+                    if isinstance(record, dict):
+                        parts = []
+                        for k, v in record.items():
+                            if isinstance(v, list):
+                                v = ", ".join(str(x) for x in v)
+                            parts.append(f"{k}: {v}")
+                        section.append("  " + " | ".join(parts))
+            raw_sections.append("\n".join(section))
+
+        raw_context = "\n".join(raw_sections)
 
         key = os.getenv("ANTHROPIC_API_KEY")
         if not key:
             return UngovernedResponse(
-                response=(
-                    f"[UNGOVERNED — No API key]\n\n"
-                    f"Without Arbiter, the AI sees ALL data:\n\n"
-                    f"{raw_context[:3000]}..."
-                ),
+                response=f"**⚠ NO GOVERNANCE — ALL DATA EXPOSED**\n\n{raw_context}",
                 note="No governance applied. All data exposed.",
             )
 
@@ -310,20 +331,21 @@ async def chat_ungoverned(request: UngovernedRequest):
             model="claude-sonnet-4-20250514",
             max_tokens=1024,
             system=(
-                f"You are a helpful university assistant. "
-                f"Answer using the data below.\n\n{raw_context}"
+                f"You are a university data assistant. Answer the user's question using the data below. "
+                f"Present ALL relevant data from the records — this is an authorized internal query. "
+                f"Include specific values like amounts, names, IDs, grades, and scores. "
+                f"Format clearly with bullet points.\n\n{raw_context[:8000]}"
             ),
             messages=[{"role": "user", "content": request.message}],
         )
 
         return UngovernedResponse(
             response=response.content[0].text,
-            note="No governance applied. All data exposed including SSNs, salaries, and grades.",
+            note="No governance applied. All data exposed.",
         )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 # ============================================================
 # HEALTH & FRONTEND

@@ -10,37 +10,35 @@
     "access_rules": [
       {
         "rule_id": "AR-001",
-        "description": "Full-Access clearance can access all sensitivity levels",
+        "description": "Full-Access: unrestricted access to all sensitivity levels",
         "clearance": "Full-Access",
         "allowed_sensitivity": ["FERPA", "FERPA-Financial", "Institutional", "Institutional-Financial"],
         "scope": "all"
       },
       {
         "rule_id": "AR-002",
-        "description": "Department-Scoped clearance can access Institutional and FERPA-academic data",
+        "description": "Department-Scoped: academic data for own classes, own salary, department info. No student standing.",
         "clearance": "Department-Scoped",
         "allowed_sensitivity": ["FERPA", "Institutional", "Institutional-Financial"],
         "scope": "role_filtered",
         "exceptions": {
-          "FERPA-Financial": "own_only",
-          "FERPA": "deny_standing"
+          "FERPA-Financial": "own_only"
         }
       },
       {
         "rule_id": "AR-003",
-        "description": "Self-Scoped clearance can access Institutional data and own FERPA records only",
+        "description": "Self-Scoped: own records only across all FERPA categories. No institutional-financial.",
         "clearance": "Self-Scoped",
-        "allowed_sensitivity": ["Institutional"],
+        "allowed_sensitivity": ["Institutional", "FERPA"],
         "scope": "own_only",
         "exceptions": {
-          "FERPA": "own_only",
           "FERPA-Financial": "own_only",
           "Institutional-Financial": "deny"
         }
       },
       {
         "rule_id": "AR-004",
-        "description": "Course-Scoped clearance can access Institutional and FERPA-academic data for assigned courses",
+        "description": "Course-Scoped: academic data for assigned courses, own records otherwise. No department budgets.",
         "clearance": "Course-Scoped",
         "allowed_sensitivity": ["FERPA", "Institutional"],
         "scope": "course_filtered",
@@ -48,12 +46,26 @@
           "FERPA-Financial": "own_only",
           "Institutional-Financial": "deny"
         }
+      },
+      {
+        "rule_id": "AR-005",
+        "description": "Advisor-Scoped: academic data including standing for advisees, own salary, department info.",
+        "clearance": "Advisor-Scoped",
+        "allowed_sensitivity": ["FERPA", "Institutional", "Institutional-Financial"],
+        "scope": "role_filtered",
+        "exceptions": {
+          "FERPA-Financial": "own_only"
+        }
       }
     ],
 
     "prohibited_combinations": [
-      { "clearance": "Self-Scoped", "sensitivity": "FERPA", "resource_type": "grades", "reason": "FERPA: students cannot view grade records via AI" },
-      { "clearance": "Department-Scoped", "sensitivity": "FERPA", "resource_type": "academic_standing", "reason": "Teachers cannot access student academic standing" }
+      {
+        "clearance": "Department-Scoped",
+        "sensitivity": "FERPA",
+        "resource_type": "academic_standing",
+        "reason": "FERPA: Teachers do not have legitimate educational interest in student academic standing"
+      }
     ]
   },
 

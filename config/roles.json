@@ -12,35 +12,35 @@
     },
     "Teacher": {
       "clearance": "Department-Scoped",
-      "description": "Access to academic data, own salary, and department info",
+      "description": "Access to academic data for own classes, own salary, department info. No student standing.",
       "mask_overrides": [],
       "financial_scope": "own_only",
       "standing_scope": "none",
       "grades_scope": "own_classes"
     },
     "Advisor": {
-      "clearance": "Department-Scoped",
-      "description": "Access to advisees' academic standing and grades",
+      "clearance": "Advisor-Scoped",
+      "description": "Access to advisees' academic standing, grades, and own salary",
       "mask_overrides": [],
       "financial_scope": "own_only",
       "standing_scope": "advisees_only",
       "grades_scope": "advisees_only"
     },
     "TA": {
-    "clearance": "Course-Scoped",
-    "description": "Student with partial grade access to assigned course only",
-    "mask_overrides": [],
-    "financial_scope": "own_only",
-    "standing_scope": "own_only",
-    "grades_scope": "assigned_courses_only" 
-    },
-    "Student": {
-      "clearance": "Self-Scoped",
-      "description": "Access to class info, own financial records, and own academic standing",
+      "clearance": "Course-Scoped",
+      "description": "Student with partial grade access to assigned courses only",
       "mask_overrides": [],
       "financial_scope": "own_only",
       "standing_scope": "own_only",
-      "grades_scope": "none"
+      "grades_scope": "assigned_courses_only"
+    },
+    "Student": {
+      "clearance": "Self-Scoped",
+      "description": "Own records only — tuition, standing, grades, class schedule",
+      "mask_overrides": [],
+      "financial_scope": "own_only",
+      "standing_scope": "own_only",
+      "grades_scope": "own_only"
     }
   }
 }
