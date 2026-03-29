@@ -131,7 +131,7 @@ Click any role on the login screen, or use credentials:
 |-------|------|------|-----------|
 | `admin` | Admin | Everything (SSNs still masked) | Full-Access |
 | `teacher` | Teacher | Own classes, own salary, department data | Department-Scoped |
-| `advisor` | Advisor | Advisee records, own salary | Department-Scoped |
+| `advisor` | Advisor | Advisee records, own salary | Advisor-Scoped |
 | `student` | Student | Own records only | Self-Scoped |
 | `ta` | TA | Assigned course grades, own records | Course-Scoped |
 
